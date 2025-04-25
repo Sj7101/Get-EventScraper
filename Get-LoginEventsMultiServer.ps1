@@ -11,10 +11,9 @@ function Get-LoginEvents {
     $eventID = 4624
 
     try {
-        $events = Get-WinEvent -FilterHashtable @{
-            LogName = $logName
-            Id      = $eventID
-        } -ErrorAction Stop
+        $events = Get-WinEvent -LogName $logName -MaxEvents 20000 | Where-Object {
+            $_.Id -eq $eventID -and $_.TimeCreated -ge $StartTime -and $_.TimeCreated -le $EndTime
+        }
     }
     catch {
         Write-Error "Failed to query events: $_"
@@ -22,42 +21,40 @@ function Get-LoginEvents {
     }
 
     $filteredResults = foreach ($event in $events) {
-        if ($event.TimeCreated -ge $StartTime -and $event.TimeCreated -le $EndTime) {
+        $xml = [xml]$event.ToXml()
+        $data = @{}
+        foreach ($d in $xml.Event.EventData.Data) {
+            $data[$d.Name] = $d.'#text'
+        }
 
-            $xml = [xml]$event.ToXml()
-            $data = @{}
-            foreach ($d in $xml.Event.EventData.Data) {
-                $data[$d.Name] = $d.'#text'
+        if ($data.LogonType -in @("2", "3", "10", "11")) {
+            $user = $data.TargetUserName
+            $domain = $data.TargetDomainName
+            $fullUser = "$domain\$user"
+
+            if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
+                continue
             }
 
-            if ($data.LogonType -in @("2", "3", "10", "11")) {
-                $user = $data.TargetUserName
-                $domain = $data.TargetDomainName
-                $fullUser = "$domain\$user"
+            if ($user -match "^(DWM-|UMFD-)\\d*$") {
+                continue
+            }
 
-                if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
-                    continue
-                }
-
-                if ($user -match "^(DWM-|UMFD-)\d*$") {
-                    continue
-                }
-
-                [PSCustomObject]@{
-                    TimeCreated    = $event.TimeCreated
-                    TargetUser     = $user
-                    TargetDomain   = $domain
-                    IPAddress      = $data.IpAddress
-                    ServerName     = $env:COMPUTERNAME
-                    EventRecordId  = $event.RecordId
-                    LogonType      = $data.LogonType
-                }
+            [PSCustomObject]@{
+                TimeCreated    = $event.TimeCreated
+                TargetUser     = $user
+                TargetDomain   = $domain
+                IPAddress      = $data.IpAddress
+                ServerName     = $env:COMPUTERNAME
+                EventRecordId  = $event.RecordId
+                LogonType      = $data.LogonType
             }
         }
     }
 
     return $filteredResults
 }
+
 
 # ================================
 # MAIN SCRIPT
@@ -103,56 +100,55 @@ foreach ($Server in $Servers) {
                         [datetime]$StartTime,
                         [datetime]$EndTime
                     )
-
+                
                     $logName = 'Security'
                     $eventID = 4624
-
+                
                     try {
-                        $events = Get-WinEvent -FilterHashtable @{
-                            LogName = $logName
-                            Id      = $eventID
-                        } -ErrorAction Stop
+                        $events = Get-WinEvent -LogName $logName -MaxEvents 20000 | Where-Object {
+                            $_.Id -eq $eventID -and $_.TimeCreated -ge $StartTime -and $_.TimeCreated -le $EndTime
+                        }
                     }
                     catch {
+                        Write-Error "Failed to query events: $_"
                         return
                     }
-
+                
                     $filteredResults = foreach ($event in $events) {
-                        if ($event.TimeCreated -ge $StartTime -and $event.TimeCreated -le $EndTime) {
-                            $xml = [xml]$event.ToXml()
-                            $data = @{}
-                            foreach ($d in $xml.Event.EventData.Data) {
-                                $data[$d.Name] = $d.'#text'
+                        $xml = [xml]$event.ToXml()
+                        $data = @{}
+                        foreach ($d in $xml.Event.EventData.Data) {
+                            $data[$d.Name] = $d.'#text'
+                        }
+                
+                        if ($data.LogonType -in @("2", "3", "10", "11")) {
+                            $user = $data.TargetUserName
+                            $domain = $data.TargetDomainName
+                            $fullUser = "$domain\$user"
+                
+                            if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
+                                continue
                             }
-
-                            if ($data.LogonType -in @("2", "3", "10", "11")) {
-                                $user = $data.TargetUserName
-                                $domain = $data.TargetDomainName
-                                $fullUser = "$domain\$user"
-
-                                if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
-                                    continue
-                                }
-
-                                if ($user -match "^(DWM-|UMFD-)\d*$") {
-                                    continue
-                                }
-
-                                [PSCustomObject]@{
-                                    TimeCreated    = $event.TimeCreated
-                                    TargetUser     = $user
-                                    TargetDomain   = $domain
-                                    IPAddress      = $data.IpAddress
-                                    ServerName     = $env:COMPUTERNAME
-                                    EventRecordId  = $event.RecordId
-                                    LogonType      = $data.LogonType
-                                }
+                
+                            if ($user -match "^(DWM-|UMFD-)\\d*$") {
+                                continue
+                            }
+                
+                            [PSCustomObject]@{
+                                TimeCreated    = $event.TimeCreated
+                                TargetUser     = $user
+                                TargetDomain   = $domain
+                                IPAddress      = $data.IpAddress
+                                ServerName     = $env:COMPUTERNAME
+                                EventRecordId  = $event.RecordId
+                                LogonType      = $data.LogonType
                             }
                         }
                     }
-
+                
                     return $filteredResults
                 }
+
 
                 Get-LoginEvents -StartTime $startInside -EndTime $endInside
             } -ArgumentList $Start, $End -ErrorAction Stop
