@@ -1,10 +1,9 @@
-## 📄 README.md
-Get-LoginEvents-MultiServer.ps1
-#📚 Overview
+📄 Get-LoginEvents-MultiServer.ps1
+📚 Overview
 This PowerShell script remotely queries multiple Windows servers for user login events from the Security Event Log.
 It filters out system and service accounts, consolidates real user login events, and exports clean reports into two separate CSV files.
 
-#The script:
+The script:
 
 Retrieves successful login events (Event ID 4624) between a user-defined start and end time.
 
@@ -14,22 +13,22 @@ Runs server checks in parallel background jobs for better performance.
 
 Exports results into two CSV files: successful logins and failed server queries.
 
-#⚙️ Requirements
-Windows PowerShell 5.1.
+⚙️ Requirements
+Windows PowerShell 5.1
 
-WinRM (Windows Remote Management) enabled on all target servers.
+WinRM (Windows Remote Management) enabled on all target servers
 
-Proper permissions to access the Security Event Log on remote servers.
+Permissions to access the Security Event Log on remote servers
 
-Ability to run Invoke-Command remotely.
+Ability to run Invoke-Command remotely
 
-#🛠 Parameters
+🛠 Parameters
 
 Parameter	Description
 -Servers	An array of server names. Example: @("Server1", "Server2")
 -StartTime	Start of the search window. Must be a [datetime].
 -EndTime	End of the search window. Must be a [datetime].
-#▶️ Example Usage
+▶️ Example Usage
 powershell
 Copy
 Edit
@@ -40,13 +39,13 @@ $end = Get-Date
 .\Get-LoginEvents-MultiServer.ps1 -Servers $servers -StartTime $start -EndTime $end
 This command retrieves login events between April 1, 2025 and today across the specified servers.
 
-#📦 Output Files
+📦 Output Files
 After the script completes, two CSV files are created in the same folder as the script:
 
 
 File	Description
 LoginEvents.csv	Contains all successfully retrieved login event data.
-FailedServer.csv	Contains a list of servers that could not be queried, along with the reason for failure.
+FailedServer.csv	Contains servers that could not be queried, with reason.
 LoginEvents.csv Fields
 TimeCreated
 
@@ -65,31 +64,47 @@ ServerName
 
 FailureReason
 
-#🧹 Filtering Logic
+🧹 Filtering Logic
 The script excludes the following accounts to focus on real user logins:
 
-Accounts from the domain NT AUTHORITY (e.g., SYSTEM, LOCAL SERVICE, NETWORK SERVICE).
+Accounts under the NT AUTHORITY domain (SYSTEM, LOCAL SERVICE, NETWORK SERVICE)
 
-Any account where the username ends with SYSTEM.
+Any account where the username ends with SYSTEM
 
-#🚀 Performance
-Runs each server scan as a background job using Start-Job.
+🚀 Performance
+Runs each server scan as a background job using Start-Job
 
-Enforces a ThrottleLimit (default: 30) to control concurrent jobs.
+Enforces a ThrottleLimit (default: 30) to control concurrent background jobs
 
-Waits for all background jobs to complete before exporting results.
+Waits for all jobs to complete before exporting results
 
-Automatically cleans up completed jobs to free system resources.
+Cleans up background jobs after collection
 
-#⚠️ Error Handling
-If a server fails (connection error, timeout, etc.), it is recorded in FailedServer.csv with a clear failure reason.
+⚠️ Error Handling
+If a server fails (connection error, timeout, RPC issue), it is recorded in FailedServer.csv with a reason
 
-The script continues processing other servers even if some fail.
+The script continues processing other servers even if some fail
 
-#📝 Notes
-Ensure WinRM and firewall rules allow remote PowerShell sessions.
+Proper job cleanup after execution
 
-User running the script must have rights to read event logs remotely.
+📝 Notes
+Ensure WinRM is enabled and firewall rules permit remote PowerShell sessions
 
-For very large environments (hundreds or thousands of servers), adjust the $ThrottleLimit to avoid memory or CPU exhaustion.
+The user running the script must have read access to the remote Event Logs
 
+For very large server lists, adjust the $ThrottleLimit value to manage resource load
+
+✅ License
+This script is free to use, modify, and distribute.
+Attribution is appreciated but not required.
+
+Summary
+This script:
+
+Collects successful login events across multiple servers
+
+Filters out system accounts
+
+Runs parallel server queries for faster performance
+
+Produces two clean CSV reports: one for successful logins, and one for failures
