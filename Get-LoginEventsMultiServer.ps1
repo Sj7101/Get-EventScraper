@@ -64,12 +64,14 @@ param (
 
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OutputCsv = Join-Path $ScriptRoot "LoginEvents.csv"
+$FailedCsv = Join-Path $ScriptRoot "FailedServer.csv"
 
 # Settings
 $ThrottleLimit = 30 # Max number of background jobs at once
 
 # Track background jobs
 $jobs = @()
+$FailedServers = @()
 
 foreach ($Server in $Servers) {
     # Wait if too many jobs are running
@@ -137,11 +139,10 @@ foreach ($Server in $Servers) {
                 Get-LoginEvents -StartTime $startInside -EndTime $endInside
             } -ArgumentList $Start, $End -ErrorAction Stop
 
-            return $result
+            return @{ Server=$ServerName; Success=$true; Data=$result }
         }
         catch {
-            Write-Error "Failed to connect to $ServerName : $_"
-            return
+            return @{ Server=$ServerName; Success=$false; ErrorMessage=$_.Exception.Message }
         }
     } -ArgumentList $Server, $StartTime, $EndTime
 }
@@ -156,23 +157,43 @@ $AllResults = @()
 foreach ($job in $jobs) {
     try {
         $data = Receive-Job -Job $job -ErrorAction Stop
-        if ($data) {
-            $AllResults += $data
+        if ($data.Success) {
+            if ($data.Data) {
+                $AllResults += $data.Data
+            }
+        }
+        else {
+            $FailedServers += [PSCustomObject]@{
+                ServerName   = $data.Server
+                FailureReason = $data.ErrorMessage
+            }
         }
     }
     catch {
-        Write-Warning "Could not receive job results: $_"
+        $FailedServers += [PSCustomObject]@{
+            ServerName    = $job.ChildJobs[0].Command
+            FailureReason = $_.Exception.Message
+        }
     }
 }
 
 # Cleanup background jobs
 $jobs | Remove-Job
 
-# Export results
+# Export successful results
 if ($AllResults.Count -gt 0) {
     $AllResults | Export-Csv -Path $OutputCsv -NoTypeInformation
     Write-Host "Login events successfully exported to $OutputCsv"
 }
 else {
     Write-Warning "No login events found across any servers."
+}
+
+# Export failed servers
+if ($FailedServers.Count -gt 0) {
+    $FailedServers | Export-Csv -Path $FailedCsv -NoTypeInformation
+    Write-Host "Failed server list exported to $FailedCsv"
+}
+else {
+    Write-Host "No server failures detected."
 }
