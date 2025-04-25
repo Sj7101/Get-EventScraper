@@ -1,7 +1,3 @@
-📄 Updated Professional README.md (with light Unicode formatting)
-markdown
-Copy
-Edit
 # 📄 Get-LoginEvents-MultiServer.ps1
 
 ## 📚 Overview
