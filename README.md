@@ -1,4 +1,4 @@
-# 📄 Get-LoginEvents-MultiServer.ps1
+# 📄 Get-LoginEventsMultiServer.ps1
 
 ## 📚 Overview
 This PowerShell script remotely queries multiple Windows servers for user login events from the Security Event Log.  
