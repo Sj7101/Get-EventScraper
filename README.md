@@ -1,43 +1,51 @@
-Get-LoginEvents-MultiServer.ps1
-Overview
-This PowerShell script queries multiple Windows servers remotely to collect user login events from the Security Event Log. It filters out system and service accounts and exports real user login events into a consolidated CSV file.
-
-The script:
-
-Searches for successful login events (Event ID 4624) between a user-defined start and end time.
-
-Excludes system accounts such as NT AUTHORITY\SYSTEM, LOCAL SERVICE, and NETWORK SERVICE.
-
-Gathers results from multiple servers simultaneously using background jobs.
-
-Exports the collected data into a file named LoginEvents.csv in the same directory as the script.
-
-Requirements
-Windows PowerShell 5.1.
-
-WinRM (Windows Remote Management) must be enabled and configured on all target servers.
-
-User account must have permission to read the Security Event Log on the remote servers.
-
-Parameters
-
-Parameter	Description
--Servers	An array of server names to query. Example: @("Server1", "Server2")
--StartTime	The start of the time window to search for login events. Must be a [datetime].
--EndTime	The end of the time window to search for login events. Must be a [datetime].
-Example Usage
-powershell
+📄 Updated Professional README.md (with light Unicode formatting)
+markdown
 Copy
 Edit
+# 📄 Get-LoginEvents-MultiServer.ps1
+
+## 📚 Overview
+This PowerShell script remotely queries multiple Windows servers for user login events from the Security Event Log.  
+It filters out system and service accounts, and consolidates real user login events into a single CSV file.
+
+The script:
+- Retrieves **successful login events** (Event ID 4624) between a user-defined start and end time.
+- **Excludes** system accounts such as `NT AUTHORITY\SYSTEM`, `LOCAL SERVICE`, and `NETWORK SERVICE`.
+- Runs server checks in **parallel background jobs** for better performance.
+- Exports results into a file called **`LoginEvents.csv`** in the script's folder.
+
+---
+
+## ⚙️ Requirements
+- Windows PowerShell **5.1**.
+- **WinRM** (Windows Remote Management) enabled on all target servers.
+- Proper permissions to access the **Security Event Log** on remote servers.
+- Ability to run `Invoke-Command` remotely.
+
+---
+
+## 🛠 Parameters
+
+| Parameter | Description |
+|:---|:---|
+| `-Servers` | An array of server names. Example: `@("Server1", "Server2")` |
+| `-StartTime` | Start of the search window. Must be a `[datetime]`. |
+| `-EndTime` | End of the search window. Must be a `[datetime]`. |
+
+---
+
+## ▶️ Example Usage
+
+```powershell
 $servers = @("Server01", "Server02", "Server03")
 $start = Get-Date -Year 2025 -Month 4 -Day 1
 $end = Get-Date
 
 .\Get-LoginEvents-MultiServer.ps1 -Servers $servers -StartTime $start -EndTime $end
-This will retrieve login events from April 1, 2025 to the current date across the specified servers and export them into LoginEvents.csv.
+This command retrieves login events between April 1, 2025 and today across the specified servers.
 
-Output
-The script generates a CSV file (LoginEvents.csv) with the following columns:
+📦 Output
+The script generates a CSV file named LoginEvents.csv containing:
 
 TimeCreated
 
@@ -51,37 +59,32 @@ ServerName
 
 EventRecordId
 
-Filtering Logic
-The script automatically filters out the following:
+🧹 Filtering Rules
+The script excludes the following accounts to focus on real user logins:
 
-Logins from the NT AUTHORITY domain (e.g., SYSTEM, LOCAL SERVICE, NETWORK SERVICE).
+Accounts from the domain NT AUTHORITY (e.g., SYSTEM, LOCAL SERVICE, NETWORK SERVICE).
 
-Any username ending in SYSTEM.
+Any account where the username ends with SYSTEM.
 
-This ensures only real user login events are captured.
+🚀 Performance
+Runs each server scan as a background job using Start-Job.
 
-Performance and Job Management
-The script uses Start-Job to create background jobs for each server.
+Enforces a ThrottleLimit (default: 30) to control concurrent jobs.
 
-It enforces a ThrottleLimit (default 30) to avoid overloading the system by limiting the number of concurrent background jobs.
+Waits for all background jobs to complete before exporting the results.
 
-After all jobs finish, the results are collected and exported together.
+You can adjust the $ThrottleLimit in the script if needed based on your system performance.
 
-Error Handling
-If a server connection fails, the script logs a warning and continues processing other servers.
+⚠️ Error Handling
+Servers that fail to connect will log a warning and continue.
 
-Only successful results are included in the final export.
+Only successful query results are included in the final CSV.
 
-Jobs are properly cleaned up after execution.
+All background jobs are properly cleaned up at the end of the script.
 
-Notes
-Ensure proper firewall rules and WinRM policies are in place for remote execution.
+📝 Notes
+Ensure WinRM and firewall rules allow remote PowerShell sessions.
 
-It is recommended to test on a small batch of servers first before scaling up to hundreds or thousands.
+User running the script must have rights to read event logs remotely.
 
-Throttle limit can be adjusted based on the available system resources.
-
-License
-This script is free to use, modify, and distribute.
-Attribution is appreciated but not required.
-
+If querying a large number of servers (hundreds or thousands), consider tuning ThrottleLimit to prevent resource exhaustion.
