@@ -1,5 +1,5 @@
-# ================================
-# FUNCTION: Get-LoginEvents
+﻿# ================================
+# FUNCTION: Get-LoginEventsMultiServer
 # ================================
 function Get-LoginEvents {
     param (
@@ -23,23 +23,35 @@ function Get-LoginEvents {
 
     $filteredResults = foreach ($event in $events) {
         if ($event.TimeCreated -ge $StartTime -and $event.TimeCreated -le $EndTime) {
-            $properties = $event.Properties
-            $user = $properties[5].Value
-            $domain = $properties[6].Value
 
-            $fullUser = "$domain\$user"
-
-            if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
-                continue
+            $xml = [xml]$event.ToXml()
+            $data = @{}
+            foreach ($d in $xml.Event.EventData.Data) {
+                $data[$d.Name] = $d.'#text'
             }
 
-            [PSCustomObject]@{
-                TimeCreated    = $event.TimeCreated
-                TargetUser     = $user
-                TargetDomain   = $domain
-                IPAddress      = $properties[18].Value
-                ServerName     = $env:COMPUTERNAME
-                EventRecordId  = $event.RecordId
+            if ($data.LogonType -in @("2", "3", "10", "11")) {
+                $user = $data.TargetUserName
+                $domain = $data.TargetDomainName
+                $fullUser = "$domain\$user"
+
+                if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
+                    continue
+                }
+
+                if ($user -match "^(DWM-|UMFD-)\d*$") {
+                    continue
+                }
+
+                [PSCustomObject]@{
+                    TimeCreated    = $event.TimeCreated
+                    TargetUser     = $user
+                    TargetDomain   = $domain
+                    IPAddress      = $data.IpAddress
+                    ServerName     = $env:COMPUTERNAME
+                    EventRecordId  = $event.RecordId
+                    LogonType      = $data.LogonType
+                }
             }
         }
     }
@@ -66,15 +78,11 @@ $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OutputCsv = Join-Path $ScriptRoot "LoginEvents.csv"
 $FailedCsv = Join-Path $ScriptRoot "FailedServer.csv"
 
-# Settings
-$ThrottleLimit = 30 # Max number of background jobs at once
-
-# Track background jobs
+$ThrottleLimit = 30
 $jobs = @()
 $FailedServers = @()
 
 foreach ($Server in $Servers) {
-    # Wait if too many jobs are running
     while ($jobs.Count -ge $ThrottleLimit) {
         $finished = $jobs | Where-Object { $_.State -match 'Completed|Failed|Stopped' }
         if ($finished) {
@@ -83,7 +91,6 @@ foreach ($Server in $Servers) {
         Start-Sleep -Seconds 1
     }
 
-    # Start a background job per server
     $jobs += Start-Job -ScriptBlock {
         param($ServerName, $Start, $End)
 
@@ -112,23 +119,34 @@ foreach ($Server in $Servers) {
 
                     $filteredResults = foreach ($event in $events) {
                         if ($event.TimeCreated -ge $StartTime -and $event.TimeCreated -le $EndTime) {
-                            $properties = $event.Properties
-                            $user = $properties[5].Value
-                            $domain = $properties[6].Value
-
-                            $fullUser = "$domain\$user"
-
-                            if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
-                                continue
+                            $xml = [xml]$event.ToXml()
+                            $data = @{}
+                            foreach ($d in $xml.Event.EventData.Data) {
+                                $data[$d.Name] = $d.'#text'
                             }
 
-                            [PSCustomObject]@{
-                                TimeCreated    = $event.TimeCreated
-                                TargetUser     = $user
-                                TargetDomain   = $domain
-                                IPAddress      = $properties[18].Value
-                                ServerName     = $env:COMPUTERNAME
-                                EventRecordId  = $event.RecordId
+                            if ($data.LogonType -in @("2", "3", "10", "11")) {
+                                $user = $data.TargetUserName
+                                $domain = $data.TargetDomainName
+                                $fullUser = "$domain\$user"
+
+                                if ($fullUser -match "^(NT AUTHORITY\\|LOCAL SERVICE\\|NETWORK SERVICE\\|.*\\SYSTEM$)") {
+                                    continue
+                                }
+
+                                if ($user -match "^(DWM-|UMFD-)\d*$") {
+                                    continue
+                                }
+
+                                [PSCustomObject]@{
+                                    TimeCreated    = $event.TimeCreated
+                                    TargetUser     = $user
+                                    TargetDomain   = $domain
+                                    IPAddress      = $data.IpAddress
+                                    ServerName     = $env:COMPUTERNAME
+                                    EventRecordId  = $event.RecordId
+                                    LogonType      = $data.LogonType
+                                }
                             }
                         }
                     }
@@ -147,11 +165,9 @@ foreach ($Server in $Servers) {
     } -ArgumentList $Server, $StartTime, $EndTime
 }
 
-# Wait for all jobs to complete
 Write-Host "Waiting for all background jobs to complete..."
 $jobs | Wait-Job
 
-# Collect results
 $AllResults = @()
 
 foreach ($job in $jobs) {
@@ -161,39 +177,33 @@ foreach ($job in $jobs) {
             if ($data.Data) {
                 $AllResults += $data.Data
             }
-        }
-        else {
+        } else {
             $FailedServers += [PSCustomObject]@{
-                ServerName   = $data.Server
+                ServerName    = $data.Server
                 FailureReason = $data.ErrorMessage
             }
         }
     }
     catch {
         $FailedServers += [PSCustomObject]@{
-            ServerName    = $job.ChildJobs[0].Command
+            ServerName    = "Unknown"
             FailureReason = $_.Exception.Message
         }
     }
 }
 
-# Cleanup background jobs
 $jobs | Remove-Job
 
-# Export successful results
 if ($AllResults.Count -gt 0) {
     $AllResults | Export-Csv -Path $OutputCsv -NoTypeInformation
     Write-Host "Login events successfully exported to $OutputCsv"
-}
-else {
+} else {
     Write-Warning "No login events found across any servers."
 }
 
-# Export failed servers
 if ($FailedServers.Count -gt 0) {
     $FailedServers | Export-Csv -Path $FailedCsv -NoTypeInformation
     Write-Host "Failed server list exported to $FailedCsv"
-}
-else {
+} else {
     Write-Host "No server failures detected."
 }
